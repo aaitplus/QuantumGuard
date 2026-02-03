@@ -134,3 +134,5 @@ Complete Professional Structure: CI/CD, IaC, scanning, attack simulation, and re
 ## Contact
 
 For questions or support, contact alishanjng@gmail.com.
+
+**I build security-first systems that automate detection, simulation, and remediation across the SDLC.**
