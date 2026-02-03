@@ -1,0 +1,153 @@
+/* QuantumGuard: Cyberpunk Theme for OWASP Juice Shop */
+/* Neon purple hacker-style CSS with cyberpunk aesthetics */
+
+:root {
+  --primary-color: #ff00ff; /* Magenta */
+  --secondary-color: #00ffff; /* Cyan */
+  --background-color: #0a0a0a; /* Dark black */
+  --text-color: #ffffff; /* White */
+  --accent-color: #ff4500; /* Orange red */
+  --glow-color: #8a2be2; /* Blue violet */
+}
+
+/* Body and general styles */
+body {
+  background: linear-gradient(135deg, var(--background-color) 0%, #1a1a1a 100%);
+  color: var(--text-color);
+  font-family: 'Courier New', monospace; /* Terminal-style font */
+  margin: 0;
+  padding: 0;
+  overflow-x: hidden;
+}
+
+/* Neon glow effect */
+.neon-glow {
+  text-shadow: 0 0 5px var(--glow-color), 0 0 10px var(--glow-color), 0 0 15px var(--glow-color);
+  color: var(--primary-color);
+}
+
+/* Buttons */
+button, .btn {
+  background: linear-gradient(45deg, var(--primary-color), var(--secondary-color));
+  border: 2px solid var(--glow-color);
+  color: var(--text-color);
+  padding: 10px 20px;
+  font-size: 16px;
+  font-weight: bold;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 0 10px var(--glow-color);
+}
+
+button:hover, .btn:hover {
+  box-shadow: 0 0 20px var(--glow-color), 0 0 30px var(--primary-color);
+  transform: scale(1.05);
+}
+
+/* Inputs */
+input, textarea, select {
+  background: rgba(0, 0, 0, 0.8);
+  border: 2px solid var(--secondary-color);
+  color: var(--text-color);
+  padding: 10px;
+  font-family: 'Courier New', monospace;
+  box-shadow: inset 0 0 5px var(--glow-color);
+}
+
+input:focus, textarea:focus, select:focus {
+  border-color: var(--primary-color);
+  box-shadow: 0 0 10px var(--primary-color);
+}
+
+/* Headers */
+h1, h2, h3, h4, h5, h6 {
+  color: var(--primary-color);
+  text-shadow: 0 0 10px var(--glow-color);
+  font-weight: bold;
+  text-align: center;
+}
+
+/* Links */
+a {
+  color: var(--secondary-color);
+  text-decoration: none;
+  transition: color 0.3s ease;
+}
+
+a:hover {
+  color: var(--primary-color);
+  text-shadow: 0 0 5px var(--glow-color);
+}
+
+/* Cards or containers */
+.card, .container {
+  background: rgba(0, 0, 0, 0.9);
+  border: 2px solid var(--glow-color);
+  border-radius: 10px;
+  padding: 20px;
+  margin: 20px 0;
+  box-shadow: 0 0 15px var(--glow-color);
+}
+
+/* Navigation */
+nav {
+  background: linear-gradient(90deg, var(--background-color), #2a2a2a);
+  border-bottom: 2px solid var(--primary-color);
+  padding: 10px;
+  text-align: center;
+}
+
+nav a {
+  margin: 0 15px;
+  font-size: 18px;
+}
+
+/* Footer */
+footer {
+  background: var(--background-color);
+  color: var(--secondary-color);
+  text-align: center;
+  padding: 20px;
+  border-top: 2px solid var(--glow-color);
+}
+
+/* Animations */
+@keyframes flicker {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.flicker {
+  animation: flicker 2s infinite;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+  body {
+    font-size: 14px;
+  }
+
+  button, .btn {
+    padding: 8px 16px;
+    font-size: 14px;
+  }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 12px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--background-color);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--primary-color);
+  border-radius: 6px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--secondary-color);
+}

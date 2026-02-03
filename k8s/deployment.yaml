@@ -1,0 +1,387 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: quantumguard-app
+  namespace: quantumguard-system
+  labels:
+    app: quantumguard
+    component: app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: quantumguard
+      component: app
+  template:
+    metadata:
+      labels:
+        app: quantumguard
+        component: app
+    spec:
+      containers:
+      - name: juice-shop
+        image: quantumguard-app:latest
+        ports:
+        - containerPort: 3000
+          name: http
+        env:
+        - name: NODE_ENV
+          value: "production"
+        - name: PORT
+          value: "3000"
+        resources:
+          limits:
+            cpu: 500m
+            memory: 512Mi
+          requests:
+            cpu: 250m
+            memory: 256Mi
+        livenessProbe:
+          httpGet:
+            path: /api/status
+            port: http
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /api/status
+            port: http
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 1000
+          runAsGroup: 1000
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: true
+        volumeMounts:
+        - name: tmp-volume
+          mountPath: /tmp
+        - name: cache-volume
+          mountPath: /app/.next/cache
+      volumes:
+      - name: tmp-volume
+        emptyDir: {}
+      - name: cache-volume
+        emptyDir: {}
+      securityContext:
+        runAsNonRoot: true
+        fsGroup: 1000
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: quantumguard-dashboard
+  namespace: quantumguard-system
+  labels:
+    app: quantumguard
+    component: dashboard
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: quantumguard
+      component: dashboard
+  template:
+    metadata:
+      labels:
+        app: quantumguard
+        component: dashboard
+    spec:
+      containers:
+      - name: dashboard
+        image: quantumguard-dashboard:latest
+        ports:
+        - containerPort: 5000
+          name: http
+        env:
+        - name: FLASK_ENV
+          value: "production"
+        - name: REPORTS_DIR
+          value: "/app/reports"
+        - name: DATA_DIR
+          value: "/app/data"
+        resources:
+          limits:
+            cpu: 300m
+            memory: 256Mi
+          requests:
+            cpu: 100m
+            memory: 128Mi
+        livenessProbe:
+          httpGet:
+            path: /api/health
+            port: http
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /api/health
+            port: http
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 1000
+          runAsGroup: 1000
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: true
+        volumeMounts:
+        - name: reports-volume
+          mountPath: /app/reports
+          readOnly: true
+        - name: data-volume
+          mountPath: /app/data
+      volumes:
+      - name: reports-volume
+        configMap:
+          name: quantumguard-reports
+      - name: data-volume
+        configMap:
+          name: quantumguard-data
+      securityContext:
+        runAsNonRoot: true
+        fsGroup: 1000
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: quantumguard-app
+  namespace: quantumguard-system
+  labels:
+    app: quantumguard
+    component: app
+spec:
+  selector:
+    app: quantumguard
+    component: app
+  ports:
+  - name: http
+    port: 3000
+    targetPort: http
+    protocol: TCP
+  type: ClusterIP
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: quantumguard-dashboard
+  namespace: quantumguard-system
+  labels:
+    app: quantumguard
+    component: dashboard
+spec:
+  selector:
+    app: quantumguard
+    component: dashboard
+  ports:
+  - name: http
+    port: 5000
+    targetPort: http
+    protocol: TCP
+  type: ClusterIP
+
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: quantumguard-ingress
+  namespace: quantumguard-system
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+spec:
+  ingressClassName: nginx
+  tls:
+  - hosts:
+    - quantumguard.example.com
+    secretName: quantumguard-tls
+  rules:
+  - host: quantumguard.example.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: quantumguard-dashboard
+            port:
+              number: 5000
+      - path: /app
+        pathType: Prefix
+        backend:
+          service:
+            name: quantumguard-app
+            port:
+              number: 3000
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: quantumguard-config
+  namespace: quantumguard-system
+data:
+  app-config.yaml: |
+    app:
+      name: quantumguard
+      environment: production
+      port: 3000
+      theme: cyberpunk
+
+    dashboard:
+      port: 5000
+      refresh_interval: 30
+      max_logs: 1000
+
+    security:
+      enable_scanning: true
+      scan_interval: 3600
+      risk_threshold: 7.0
+      auto_remediation: true
+
+    monitoring:
+      enable_metrics: true
+      metrics_port: 9090
+      log_level: INFO
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: quantumguard-secrets
+  namespace: quantumguard-system
+type: Opaque
+data:
+  # Base64 encoded secrets would go here
+  # database-password: <base64-encoded-password>
+  # api-key: <base64-encoded-key>
+
+---
+apiVersion: policy/v1beta1
+kind: PodSecurityPolicy
+metadata:
+  name: quantumguard-psp
+  namespace: quantumguard-system
+spec:
+  privileged: false
+  allowPrivilegeEscalation: false
+  requiredDropCapabilities:
+    - ALL
+  allowedCapabilities: []
+  runAsUser:
+    rule: MustRunAsNonRoot
+  seLinux:
+    rule: RunAsAny
+  supplementalGroups:
+    rule: MustRunAs
+    ranges:
+    - min: 1000
+      max: 1000
+  fsGroup:
+    rule: MustRunAs
+    ranges:
+    - min: 1000
+      max: 1000
+  readOnlyRootFilesystem: true
+  volumes:
+    - configMap
+    - emptyDir
+    - projected
+    - secret
+    - downwardAPI
+    - persistentVolumeClaim
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: quantumguard-role
+  namespace: quantumguard-system
+rules:
+- apiGroups: [""]
+  resources: ["pods", "services", "configmaps", "secrets"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+- apiGroups: ["apps"]
+  resources: ["deployments", "replicasets"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+- apiGroups: ["networking.k8s.io"]
+  resources: ["networkpolicies", "ingresses"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: quantumguard-rolebinding
+  namespace: quantumguard-system
+subjects:
+- kind: ServiceAccount
+  name: quantumguard-sa
+  namespace: quantumguard-system
+roleRef:
+  kind: Role
+  name: quantumguard-role
+  apiGroup: rbac.authorization.k8s.io
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: quantumguard-sa
+  namespace: quantumguard-system
+  labels:
+    app: quantumguard
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: quantumguard-network-policy
+  namespace: quantumguard-system
+spec:
+  podSelector:
+    matchLabels:
+      app: quantumguard
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: quantumguard
+    ports:
+    - protocol: TCP
+      port: 3000
+    - protocol: TCP
+      port: 5000
+  egress:
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 53
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 80
+    - protocol: TCP
+      port: 443

@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QuantumGuard - Cyber Defense Simulator</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/cyberpunk.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+</head>
+<body>
+    <div class="dashboard-container">
+        <header class="dashboard-header">
+            <h1 class="neon-glow">QUANTUMGUARD</h1>
+            <p class="subtitle">Offline Cyber Defense Simulator</p>
+            <div class="system-status">
+                <span class="status-indicator" id="health-status">LOADING...</span>
+            </div>
+        </header>
+
+        <nav class="dashboard-nav">
+            <button class="nav-btn active" onclick="showSection('overview')">OVERVIEW</button>
+            <button class="nav-btn" onclick="showSection('scans')">SECURITY SCANS</button>
+            <button class="nav-btn" onclick="showSection('simulations')">ATTACK SIMS</button>
+            <button class="nav-btn" onclick="showSection('remediation')">AUTO-HARDEN</button>
+            <button class="nav-btn" onclick="showSection('logs')">SYSTEM LOGS</button>
+        </nav>
+
+        <main class="dashboard-main">
+            <!-- Overview Section -->
+            <section id="overview" class="dashboard-section active">
+                <div class="metrics-grid">
+                    <div class="metric-card">
+                        <h3>OVERALL RISK</h3>
+                        <div class="metric-value" id="overall-risk">--</div>
+                        <div class="risk-indicator" id="risk-indicator"></div>
+                    </div>
+                    <div class="metric-card">
+                        <h3>ACTIVE SCANS</h3>
+                        <div class="metric-value" id="active-scans">--</div>
+                    </div>
+                    <div class="metric-card">
+                        <h3>VULNERABILITIES</h3>
+                        <div class="metric-value" id="total-vulns">--</div>
+                    </div>
+                    <div class="metric-card">
+                        <h3>LAST UPDATE</h3>
+                        <div class="metric-value" id="last-update">--</div>
+                    </div>
+                </div>
+
+                <div class="visualization-container">
+                    <canvas id="riskHeatmap" width="800" height="400"></canvas>
+                </div>
+            </section>
+
+            <!-- Security Scans Section -->
+            <section id="scans" class="dashboard-section">
+                <div class="scan-controls">
+                    <button class="action-btn" onclick="triggerScan('sast')">RUN SAST SCAN</button>
+                    <button class="action-btn" onclick="triggerScan('sca')">RUN SCA SCAN</button>
+                    <button class="action-btn" onclick="triggerScan('container')">RUN CONTAINER SCAN</button>
+                    <button class="action-btn" onclick="triggerScan('iac')">RUN IAC SCAN</button>
+                </div>
+
+                <div class="scan-results">
+                    <div class="scan-card" id="sast-card">
+                        <h3>STATIC ANALYSIS (SAST)</h3>
+                        <div class="scan-metrics">
+                            <span>Risk: <span id="sast-risk">--</span></span>
+                            <span>Findings: <span id="sast-findings">--</span></span>
+                        </div>
+                    </div>
+                    <div class="scan-card" id="sca-card">
+                        <h3>DEPENDENCY SCAN (SCA)</h3>
+                        <div class="scan-metrics">
+                            <span>Risk: <span id="sca-risk">--</span></span>
+                            <span>Vulnerabilities: <span id="sca-vulns">--</span></span>
+                        </div>
+                    </div>
+                    <div class="scan-card" id="container-card">
+                        <h3>CONTAINER SCAN</h3>
+                        <div class="scan-metrics">
+                            <span>Risk: <span id="container-risk">--</span></span>
+                            <span>Issues: <span id="container-issues">--</span></span>
+                        </div>
+                    </div>
+                    <div class="scan-card" id="iac-card">
+                        <h3>INFRASTRUCTURE SCAN (IaC)</h3>
+                        <div class="scan-metrics">
+                            <span>Risk: <span id="iac-risk">--</span></span>
+                            <span>Findings: <span id="iac-findings">--</span></span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Attack Simulations Section -->
+            <section id="simulations" class="dashboard-section">
+                <div class="simulation-controls">
+                    <button class="action-btn danger" onclick="triggerScan('simulation')">RUN ATTACK SIMULATION</button>
+                </div>
+
+                <div class="simulation-results">
+                    <div class="sim-card">
+                        <h3>SIMULATION OVERVIEW</h3>
+                        <div class="sim-metrics">
+                            <span>Overall Risk: <span id="sim-overall-risk">--</span></span>
+                            <span>Tests Run: <span id="sim-tests">--</span></span>
+                        </div>
+                    </div>
+                    <div class="attack-types">
+                        <div class="attack-type" data-type="SQL Injection">
+                            <h4>SQL INJECTION</h4>
+                            <span class="attack-risk" id="sql-risk">--</span>
+                        </div>
+                        <div class="attack-type" data-type="XSS">
+                            <h4>CROSS-SITE SCRIPTING</h4>
+                            <span class="attack-risk" id="xss-risk">--</span>
+                        </div>
+                        <div class="attack-type" data-type="Misconfigured Permissions">
+                            <h4>MISCONFIGURED PERMS</h4>
+                            <span class="attack-risk" id="perms-risk">--</span>
+                        </div>
+                        <div class="attack-type" data-type="Privilege Escalation">
+                            <h4>PRIVILEGE ESCALATION</h4>
+                            <span class="attack-risk" id="priv-risk">--</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Auto-Hardening Section -->
+            <section id="remediation" class="dashboard-section">
+                <div class="remediation-controls">
+                    <button class="action-btn success" onclick="triggerScan('remediation')">RUN AUTO-REMEDIATION</button>
+                </div>
+
+                <div class="remediation-status">
+                    <div class="remediation-phase" id="dep-phase">
+                        <h4>DEPENDENCY UPDATES</h4>
+                        <span class="phase-status" id="dep-status">PENDING</span>
+                    </div>
+                    <div class="remediation-phase" id="docker-phase">
+                        <h4>DOCKER HARDENING</h4>
+                        <span class="phase-status" id="docker-status">PENDING</span>
+                    </div>
+                    <div class="remediation-phase" id="k8s-phase">
+                        <h4>KUBERNETES SECURITY</h4>
+                        <span class="phase-status" id="k8s-status">PENDING</span>
+                    </div>
+                    <div class="remediation-phase" id="test-phase">
+                        <h4>SANDBOX TESTING</h4>
+                        <span class="phase-status" id="test-status">PENDING</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- System Logs Section -->
+            <section id="logs" class="dashboard-section">
+                <div class="logs-container">
+                    <div class="log-filters">
+                        <button class="filter-btn active" onclick="filterLogs('all')">ALL</button>
+                        <button class="filter-btn" onclick="filterLogs('ERROR')">ERROR</button>
+                        <button class="filter-btn" onclick="filterLogs('WARNING')">WARNING</button>
+                        <button class="filter-btn" onclick="filterLogs('INFO')">INFO</button>
+                    </div>
+                    <div class="log-entries" id="log-entries">
+                        <!-- Logs will be populated by JavaScript -->
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+</body>
+</html>
