@@ -1,44 +1,49 @@
-# QuantumGuard Dockerfile - builds only the frontend (dashboard)
-# Use Node 20 for Angular 19+
+# QuantumGuard Dockerfile
+# Build and run the cyberpunk dashboard + QuantumGuard app
 
-# =========================
-# Builder Stage
-# =========================
-FROM node:20-alpine AS builder
+# ------------------------------
+# Stage 1: Build Python Dependencies
+# ------------------------------
+FROM python:3.11-alpine AS builder
 
-# Install build tools
-RUN apk add --no-cache bash git python3 make g++
+# Install build dependencies
+RUN apk add --no-cache bash git make g++
 
 # Set working directory
 WORKDIR /app
 
-# Copy package files first (for caching)
-COPY package*.json ./
+# Copy Python requirements and install
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Install dependencies
-RUN npm install
+# Copy all app source code
+COPY app/ ./app
+COPY simulator/ ./simulator
+COPY scanner/ ./scanner
+COPY dashboard/ ./dashboard
+COPY scripts/ ./scripts
+COPY hardening/ ./hardening
+COPY terraform/ ./terraform
+COPY k8s/ ./k8s
+COPY utils.py .
+COPY self_learning.py .
+COPY quantumguard.py .
 
-# Copy only the dashboard folder (actual folder in repo)
-COPY dashboard ./dashboard
+# ------------------------------
+# Stage 2: Production image
+# ------------------------------
+FROM python:3.11-alpine
 
-# Build the Angular frontend
-WORKDIR /app/dashboard
-RUN npm install
-RUN npm run build --configuration production
+# Install runtime dependencies
+RUN apk add --no-cache bash git
 
-# =========================
-# Production Stage
-# =========================
-FROM nginx:alpine
+WORKDIR /app
 
-# Remove default Nginx static files
-RUN rm -rf /usr/share/nginx/html/*
+# Copy built app from builder
+COPY --from=builder /app /app
 
-# Copy built Angular files from builder
-COPY --from=builder /app/dashboard/dist/dashboard /usr/share/nginx/html
+# Expose port for the dashboard
+EXPOSE 5000
 
-# Expose port 80
-EXPOSE 80
-
-# Start Nginx
-CMD ["nginx", "-g", "daemon off;"]
+# Default command
+CMD ["python", "quantumguard.py"]
