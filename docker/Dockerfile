@@ -21,7 +21,7 @@ COPY quantumguard.py ./
 COPY self_learning.py ./
 COPY utils.py ./
 
-# Copy application folders from repo root
+# Copy folders
 COPY app ./app
 COPY scanner ./scanner
 COPY simulator ./simulator
@@ -30,16 +30,16 @@ COPY hardening ./hardening
 COPY terraform ./terraform
 COPY k8s ./k8s
 
-# Copy dashboard folder from docker/
+# Copy dashboard (inside docker/)
 COPY docker/dashboard ./dashboard
 
 # Expose Flask port
 EXPOSE 5000
 
-# Set environment variables
+# Set Flask environment
 ENV FLASK_APP=dashboard/app.py
 ENV FLASK_RUN_HOST=0.0.0.0
 ENV FLASK_ENV=production
 
-# Start the Flask app
+# Start Flask
 CMD ["flask", "run"]
