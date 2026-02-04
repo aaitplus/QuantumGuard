@@ -1,11 +1,11 @@
 # QuantumGuard Application Dockerfile
-# Multi-stage build for OWASP Juice Shop with cyberpunk theme
+# Multi-stage build for OWASP Juice Shop + Angular frontend
 
 # Build stage
-FROM node:18-alpine AS builder
+FROM node:20-alpine AS builder
 
 # Install build dependencies
-RUN apk add --no-cache git python3 make g++
+RUN apk add --no-cache git python3 make g++ bash
 
 # Set working directory
 WORKDIR /app
@@ -16,11 +16,11 @@ RUN git clone https://github.com/juice-shop/juice-shop.git .
 # Install dependencies
 RUN npm install
 
-# Build the application
+# Build the application (frontend + server)
 RUN npm run build
 
 # Production stage
-FROM node:18-alpine AS production
+FROM node:20-alpine AS production
 
 # Install security updates and create non-root user
 RUN apk update && apk upgrade && \
