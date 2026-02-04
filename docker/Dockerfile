@@ -16,12 +16,12 @@ COPY requirements.txt ./
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy main Python files
+# Copy main Python files from repo root
 COPY quantumguard.py ./
 COPY self_learning.py ./
 COPY utils.py ./
 
-# Copy application folders
+# Copy application folders from repo root
 COPY app ./app
 COPY scanner ./scanner
 COPY simulator ./simulator
@@ -30,7 +30,7 @@ COPY hardening ./hardening
 COPY terraform ./terraform
 COPY k8s ./k8s
 
-# Copy dashboard folder
+# Copy dashboard folder from docker/
 COPY docker/dashboard ./dashboard
 
 # Expose Flask port
