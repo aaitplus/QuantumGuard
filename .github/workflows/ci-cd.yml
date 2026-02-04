@@ -9,7 +9,6 @@ on:
   pull_request:
     branches: [ main ]
   schedule:
-    # Run daily security scans
     - cron: '0 2 * * *'
 
 env:
@@ -17,289 +16,209 @@ env:
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
-  # Build and Test
+
+  # =========================
+  # Build & Test
+  # =========================
   build:
     runs-on: ubuntu-latest
+
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.9'
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
 
-    - name: Set up Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '18'
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
 
-    - name: Set up Docker
-      run: |
-        sudo apt-get update
-        sudo apt-get remove -y containerd
-        sudo apt-get install -y docker.io
-        sudo systemctl start docker
+      - name: Set up Docker
+        run: |
+          sudo apt-get update
+          sudo apt-get remove -y containerd containerd.io || true
+          sudo apt-get install -y docker.io
+          sudo usermod -aG docker $USER
 
-    - name: Install Python dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
 
-    - name: Install Node.js dependencies
-      run: |
-        cd dashboard
-        npm install
+      - name: Install Node.js dependencies
+        run: |
+          cd dashboard
+          npm ci
 
-    - name: Lint Python code
-      run: |
-        pip install flake8
-        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
-        flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+      - name: Lint Python code
+        run: |
+          pip install flake8
+          flake8 .
 
-    - name: Lint JavaScript code
-      run: |
-        cd dashboard
-        npm run lint || true
+      - name: Lint JavaScript code
+        run: |
+          cd dashboard
+          npm run lint || true
 
-    - name: Build Docker images
-      run: |
-        docker build -t quantumguard-app ./docker
-        docker build -t quantumguard-dashboard ./dashboard
+      - name: Build Docker images
+        run: |
+          docker build -t quantumguard-app ./docker
+          docker build -t quantumguard-dashboard ./dashboard
 
-    - name: Test Docker images
-      run: |
-        docker run --rm quantumguard-app npm test || true
-        docker run --rm quantumguard-dashboard python -c "import flask; print('Flask import successful')"
+      - name: Test Docker images
+        run: |
+          docker run --rm quantumguard-app python -V
+          docker run --rm quantumguard-dashboard node -v
 
-    - name: Upload build artifacts
-      uses: actions/upload-artifact@v4
-      with:
-        name: docker-images
-        path: |
-          docker/
-          dashboard/
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-context
+          path: |
+            docker/
+            dashboard/
 
+  # =========================
   # Security Scanning
+  # =========================
   security-scan:
     needs: build
     runs-on: ubuntu-latest
+
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.9'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
 
-    - name: Install security tools
-      run: |
-        # Install Semgrep
-        python -m pip install semgrep
+      - name: Install security tools
+        run: |
+          python -m pip install semgrep
 
-        # Install Trivy
-        sudo apt-get update
-        sudo apt-get install -y wget apt-transport-https gnupg lsb-release
-        wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
-        echo "deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main" | sudo tee -a /etc/apt/sources.list.d/trivy.list
-        sudo apt-get update
-        sudo apt-get install -y trivy
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sudo sh -s -- -b /usr/local/bin
 
-        # Install tfsec
-        curl -s https://raw.githubusercontent.com/aquasecurity/tfsec/master/scripts/install.sh | bash
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/tfsec/master/scripts/install_linux.sh | sudo sh
 
-    - name: Run SAST Scan
-      run: |
-        python scanner/sast_scan.py
-      continue-on-error: true
+      - name: Run SAST Scan
+        run: python scanner/sast_scan.py
+        continue-on-error: true
 
-    - name: Run Container Scan
-      run: |
-        python scanner/container_scan.py
-      continue-on-error: true
+      - name: Run Container Scan
+        run: python scanner/container_scan.py
+        continue-on-error: true
 
-    - name: Run IaC Scan
-      run: |
-        python scanner/iac_scan.py
-      continue-on-error: true
+      - name: Run IaC Scan
+        run: python scanner/iac_scan.py
+        continue-on-error: true
 
-    - name: Run Attack Simulation
-      run: |
-        python simulator/attack_simulator.py
-      continue-on-error: true
+      - name: Run Attack Simulation
+        run: python simulator/attack_simulator.py
+        continue-on-error: true
 
-    - name: Upload security reports
-      uses: actions/upload-artifact@v4
-      with:
-        name: security-reports
-        path: reports/
+      - name: Upload security reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-reports
+          path: reports/
 
-    - name: Check for critical vulnerabilities
-      run: |
-        # Parse reports and fail if critical issues found
-        python -c "
-        import json
-        import sys
-        import os
+      - name: Enforce security gate
+        run: |
+          python - <<EOF
+          import json, os, sys
+          for f in os.listdir("reports"):
+              if f.endswith(".json"):
+                  d=json.load(open(os.path.join("reports",f)))
+                  if d.get("overall_risk_score",0)>=8:
+                      print("CRITICAL vulnerabilities detected")
+                      sys.exit(1)
+          print("Security gate passed")
+          EOF
 
-        critical_found = False
-        reports_dir = 'reports'
-
-        for filename in os.listdir(reports_dir):
-            if filename.endswith('-processed.json'):
-                with open(os.path.join(reports_dir, filename), 'r') as f:
-                    data = json.load(f)
-                    risk_score = data.get('overall_risk_score', 0)
-                    if risk_score >= 8.0:
-                        print(f'CRITICAL: High risk score {risk_score} in {filename}')
-                        critical_found = True
-
-        if critical_found:
-            print('Critical vulnerabilities found. Failing pipeline.')
-            sys.exit(1)
-        else:
-            print('No critical vulnerabilities found.')
-        "
-
+  # =========================
   # Auto-Remediation
+  # =========================
   remediation:
     needs: security-scan
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
+    if: github.event_name == 'push'
+
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.9'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
 
-    - name: Set up Docker
-  run: |
-    sudo apt-get update
-    sudo apt-get remove -y containerd containerd.io || true
-    sudo apt-get install -y docker.io
-    sudo systemctl start docker
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
 
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
+      - name: Download security reports
+        uses: actions/download-artifact@v4
+        with:
+          name: security-reports
+          path: reports/
 
-    - name: Download security reports
-      uses: actions/download-artifact@v3
-      with:
-        name: security-reports
-        path: reports/
+      - name: Run Auto-Remediation
+        run: python hardening/auto_remediate.py
+        continue-on-error: true
 
-    - name: Run Auto-Remediation
-      run: |
-        python hardening/auto_remediate.py
-      continue-on-error: true
+      - name: Commit remediation changes
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add .
+          git diff --cached --quiet || git commit -m "Auto-remediation applied"
+          git push
+        continue-on-error: true
 
-    - name: Upload remediation reports
-      uses: actions/upload-artifact@v4
-      with:
-        name: remediation-reports
-        path: |
-          reports/remediation-report.json
-          data/backups/
-
-    - name: Commit remediation changes
-      run: |
-        git config --local user.email 'action@github.com'
-        git config --local user.name 'GitHub Action'
-        git add .
-        git diff --quiet && git diff --staged --quiet || git commit -m 'Auto-remediation: Security fixes applied'
-        git push
-      continue-on-error: true
-
-  # Deploy to Staging
+  # =========================
+  # Deploy (Staging)
+  # =========================
   deploy-staging:
     needs: remediation
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/develop'
     environment: staging
+
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-    - name: Set up Docker
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y docker.io
-        sudo systemctl start docker
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-    - name: Log in to Container Registry
-      uses: docker/login-action@v2
-      with:
-        registry: ${{ env.REGISTRY }}
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build & Push Images
+        run: |
+          docker build -t $REGISTRY/$IMAGE_NAME/app:staging ./docker
+          docker push $REGISTRY/$IMAGE_NAME/app:staging
 
-    - name: Build and push Docker images
-      run: |
-        docker build -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/app:staging ./docker
-        docker build -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/dashboard:staging ./dashboard
-        docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/app:staging
-        docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/dashboard:staging
-
-    - name: Deploy to staging environment
-      run: |
-        echo "Deploying to staging environment..."
-        # Add your staging deployment commands here
-        # For example: kubectl apply -f k8s/ --namespace=staging
-
-  # Deploy to Production
+  # =========================
+  # Deploy (Production)
+  # =========================
   deploy-production:
     needs: remediation
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
     environment: production
+
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-    - name: Set up Docker
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y docker.io
-        sudo systemctl start docker
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-    - name: Log in to Container Registry
-      uses: docker/login-action@v2
-      with:
-        registry: ${{ env.REGISTRY }}
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
-
-    - name: Build and push Docker images
-      run: |
-        docker build -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/app:latest ./docker
-        docker build -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/dashboard:latest ./dashboard
-        docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/app:latest
-        docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/dashboard:latest
-
-    - name: Deploy to production environment
-      run: |
-        echo "Deploying to production environment..."
-        # Add your production deployment commands here
-        # For example: kubectl apply -f k8s/ --namespace=production
-
-    - name: Run post-deployment tests
-      run: |
-        echo "Running post-deployment tests..."
-        # Add health checks and integration tests here
-
-  # Notification
-  notify:
-    needs: [security-scan, remediation, deploy-staging, deploy-production]
-    runs-on: ubuntu-latest
-    if: always()
-    steps:
-    - name: Send notification
-      run: |
-        echo "Pipeline completed with status: ${{ job.status }}"
-        # Add notification logic here (Slack, email, etc.)
+      - name: Build & Push Images
+        run: |
+          docker build -t $REGISTRY/$IMAGE_NAME/app:latest ./docker
+          docker push $REGISTRY/$IMAGE_NAME/app:latest
