@@ -1,51 +1,54 @@
 # QuantumGuard Application Dockerfile
-# Multi-stage build for OWASP Juice Shop + Angular frontend
+# Multi-stage build for Angular frontend + Python backend
 
-# Build stage
+# -------------------------
+# Builder stage
+# -------------------------
 FROM node:20-alpine AS builder
 
 # Install build dependencies
-RUN apk add --no-cache git python3 make g++ bash
+RUN apk add --no-cache python3 make g++ bash git
 
 # Set working directory
 WORKDIR /app
 
-# Clone OWASP Juice Shop
-RUN git clone https://github.com/juice-shop/juice-shop.git .
+# Copy frontend source
+COPY frontend/ ./frontend/
+COPY package*.json ./
 
-# Install dependencies
-RUN npm install
+# Install frontend dependencies
+RUN cd frontend && npm install
 
-# Build the application (frontend + server)
-RUN npm run build
+# Build frontend
+RUN cd frontend && npm run build:frontend
 
+# -------------------------
 # Production stage
-FROM node:20-alpine AS production
+# -------------------------
+FROM python:3.11-alpine AS production
 
-# Install security updates and create non-root user
-RUN apk update && apk upgrade && \
-    apk add --no-cache dumb-init su-exec && \
-    addgroup -g 1001 -S nodejs && \
-    adduser -S nextjs -u 1001
+# Install system dependencies
+RUN apk update && apk add --no-cache bash dumb-init su-exec
 
 # Set working directory
 WORKDIR /app
 
-# Copy built application from builder stage
-COPY --from=builder --chown=nextjs:nodejs /app/.next ./.next
-COPY --from=builder --chown=nextjs:nodejs /app/node_modules ./node_modules
-COPY --from=builder --chown=nextjs:nodejs /app/package.json ./package.json
-COPY --from=builder --chown=nextjs:nodejs /app/public ./public
+# Copy backend code
+COPY . .
+
+# Copy built frontend from builder
+COPY --from=builder /app/frontend/dist ./frontend/dist
+
+# Install Python dependencies
+RUN pip install --no-cache-dir --upgrade pip
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Expose application port
+EXPOSE 8000
 
 # Switch to non-root user
-USER nextjs
-
-# Expose port
-EXPOSE 3000
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-    CMD node -e "require('http').get('http://localhost:3000/api/status', (res) => { process.exit(res.statusCode === 200 ? 0 : 1) })"
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+USER appuser
 
 # Start the application
-CMD ["npm", "start"]
+CMD ["python", "quantumguard.py"]
