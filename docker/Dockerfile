@@ -1,35 +1,29 @@
-# QuantumGuard Multi-stage Dockerfile
+# QuantumGuard Dockerfile (fully corrected)
+# Build Angular dashboard and Python backend
+
 # ------------------------------
-# Stage 1: Build environment (Python + Angular dashboard)
+# Stage 1: Build Angular dashboard
 FROM node:20-alpine AS frontend-builder
 
-# Install build dependencies
-RUN apk add --no-cache bash git python3 make g++ curl
+RUN apk add --no-cache bash git python3 make g++
 
-# Set working directory
 WORKDIR /app
 
-# Copy repo files into build context
-COPY package*.json .
+# Copy only dashboard folder
 COPY dashboard/ ./dashboard/
 
-# Install frontend dependencies
-RUN cd dashboard && npm install
-
-# Build Angular dashboard
-RUN cd dashboard && npm run build --configuration production
+# Install dependencies and build
+RUN cd dashboard && npm install && npm run build --configuration production
 
 # ------------------------------
-# Stage 2: Python environment for backend
+# Stage 2: Python backend
 FROM python:3.11-alpine AS backend
 
-# Install system dependencies
-RUN apk add --no-cache bash git python3 make g++ build-base curl
+RUN apk add --no-cache bash git python3 make g++ build-base
 
-# Set working directory
 WORKDIR /app
 
-# Copy Python files and backend folders
+# Copy all Python backend files from repo root
 COPY requirements.txt .
 COPY app/ ./app/
 COPY simulator/ ./simulator/
@@ -45,11 +39,11 @@ COPY quantumguard.py .
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy built Angular dashboard from frontend stage
+# Copy Angular dashboard build from frontend stage
 COPY --from=frontend-builder /app/dashboard/dist/dashboard ./dashboard/dist/dashboard
 
-# Expose port for QuantumGuard backend
+# Expose backend port
 EXPOSE 8000
 
-# Default command to run QuantumGuard
+# Default command
 CMD ["python", "quantumguard.py"]
