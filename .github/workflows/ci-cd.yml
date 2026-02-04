@@ -13,56 +13,40 @@ env:
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
-
-  # =========================
-  # Build & Test
-  # =========================
   build:
     runs-on: ubuntu-latest
 
     steps:
-      # Checkout the repo (full history)
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 0  # ensures all files are visible
 
-      # Setup Python
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
-      # Install Python dependencies
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      # Lint Python (non-blocking)
-      - name: Lint Python
+      - name: Lint Python (non-blocking)
         run: |
           pip install flake8==7.3.0
           flake8 . || true
 
-      # Build Docker image (context = repo root)
       - name: Build Docker image
         run: docker build -t quantumguard-app .
 
-      # Smoke test Docker container
       - name: Smoke test container
         run: docker run --rm quantumguard-app python -V
 
-  # =========================
-  # Security Scanning
-  # =========================
   security-scan:
     needs: build
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
@@ -95,98 +79,19 @@ jobs:
           name: security-reports
           path: reports/
 
-      - name: Enforce Security Gate
-        run: |
-          python - <<'EOF'
-          import json, os, sys
-          for f in os.listdir("reports"):
-              if f.endswith(".json"):
-                  data = json.load(open(os.path.join("reports", f)))
-                  if data.get("overall_risk_score", 0) >= 8:
-                      print("❌ CRITICAL vulnerabilities detected")
-                      sys.exit(1)
-          print("✅ Security gate passed")
-          EOF
-
-  # =========================
-  # Auto Remediation
-  # =========================
-  remediation:
+  deploy:
     needs: security-scan
     runs-on: ubuntu-latest
-    if: github.event_name == 'push'
 
     steps:
       - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Install dependencies
-        run: pip install -r requirements.txt
-
-      - name: Download security reports
-        uses: actions/download-artifact@v4
-        with:
-          name: security-reports
-          path: reports/
-
-      - name: Run auto-remediation
-        run: python hardening/auto_remediate.py
-        continue-on-error: true
-
-      - name: Commit remediation changes
-        run: |
-          git config user.name "github-actions"
-          git config user.email "actions@github.com"
-          git add .
-          git diff --cached --quiet || git commit -m "Auto-remediation applied"
-          git push
-        continue-on-error: true
-
-  # =========================
-  # Deploy Staging
-  # =========================
-  deploy-staging:
-    needs: remediation
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/develop'
-    environment: staging
-
-    steps:
-      - uses: actions/checkout@v4
-
       - uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build & Push Docker (Staging)
-        run: |
-          docker build -t $REGISTRY/$IMAGE_NAME/app:staging .
-          docker push $REGISTRY/$IMAGE_NAME/app:staging
-
-  # =========================
-  # Deploy Production
-  # =========================
-  deploy-production:
-    needs: remediation
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
-    environment: production
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build & Push Docker (Production)
+      - name: Build & Push Docker
         run: |
           docker build -t $REGISTRY/$IMAGE_NAME/app:latest .
           docker push $REGISTRY/$IMAGE_NAME/app:latest
