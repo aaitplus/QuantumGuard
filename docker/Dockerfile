@@ -1,47 +1,46 @@
-# ===============================
-# QuantumGuard Dockerfile
-# ===============================
+# Use Python slim as base
+FROM python:3.11-slim AS build
 
-# Base Python image
-FROM python:3.11-slim
-
-# Set working directory
+# Set workdir
 WORKDIR /app
 
-# Install system dependencies
+# Install build dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential git libffi-dev libssl-dev pkg-config \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy Python dependencies
-COPY ../requirements.txt ./
+# Copy requirements and install Python deps
+COPY requirements.txt ./
 RUN pip install --upgrade pip
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy main Python files from repo root
-COPY ../quantumguard.py ./
-COPY ../self_learning.py ./
-COPY ../utils.py ./
+# =========================
+# Runtime image
+# =========================
+FROM python:3.11-slim AS runtime
 
-# Copy folders from repo root
-COPY ../app ./app
-COPY ../scanner ./scanner
-COPY ../simulator ./simulator
-COPY ../scripts ./scripts
-COPY ../hardening ./hardening
-COPY ../terraform ./terraform
-COPY ../k8s ./k8s
+# Set workdir
+WORKDIR /app
 
-# Copy dashboard folder from docker/
-COPY ./dashboard ./dashboard
+# Copy venv from build stage (optional, or install again)
+# COPY --from=build /opt/venv /opt/venv
 
-# Expose Flask default port
+# Copy all Python scripts and folders
+COPY utils.py ./
+COPY docker/quantumguard.py ./
+COPY docker/self_learning.py ./
+
+COPY app/ ./app/
+COPY docker/dashboard/ ./dashboard/
+COPY scanner/ ./scanner/
+COPY simulator/ ./simulator/
+COPY hardening/ ./hardening/
+COPY scripts/ ./scripts/
+COPY terraform/ ./terraform/
+COPY k8s/ ./k8s/
+
+# Expose Flask port (adjust if needed)
 EXPOSE 5000
 
-# Set Flask environment variables
-ENV FLASK_APP=dashboard/app.py
-ENV FLASK_RUN_HOST=0.0.0.0
-ENV FLASK_ENV=production
-
 # Default command
-CMD ["flask", "run"]
+CMD ["python", "quantumguard.py"]
