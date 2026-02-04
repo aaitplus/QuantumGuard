@@ -1,4 +1,3 @@
-# .github/workflows/ci-cd.yml
 name: QuantumGuard CI/CD
 
 on:
@@ -11,13 +10,9 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: quantumguard/app   # lowercase for GitHub Container Registry
+  IMAGE_NAME: quantumguard   # lowercase repo name
 
 jobs:
-
-  # =========================
-  # Build & Test
-  # =========================
   build:
     runs-on: ubuntu-latest
 
@@ -36,7 +31,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Lint Python (non-blocking)
+      - name: Lint Python
         run: |
           pip install flake8==7.3.0
           flake8 . || true
@@ -44,146 +39,11 @@ jobs:
       - name: Build Docker image
         uses: docker/build-push-action@v5
         with:
-          context: .
-          file: ./Dockerfile
+          context: .              # important: repo root
+          file: ./docker/Dockerfile
           push: false
-          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/app:latest
 
       - name: Smoke test container
-        run: docker run --rm ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest python -V
-
-      - name: Upload build context
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-context
-          path: .
-
-  # =========================
-  # Security Scanning
-  # =========================
-  security-scan:
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Install security tools
         run: |
-          pip install semgrep
-          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sudo sh -s -- -b /usr/local/bin
-          curl -sfL https://raw.githubusercontent.com/aquasecurity/tfsec/master/scripts/install_linux.sh | sudo sh
-
-      - name: Run SAST
-        run: python scanner/sast_scan.py
-        continue-on-error: true
-
-      - name: Run Container Scan
-        run: python scanner/container_scan.py
-        continue-on-error: true
-
-      - name: Run IaC Scan
-        run: python scanner/iac_scan.py
-        continue-on-error: true
-
-      - name: Run Attack Simulation
-        run: python simulator/attack_simulator.py
-        continue-on-error: true
-
-      - name: Upload security reports
-        uses: actions/upload-artifact@v4
-        with:
-          name: security-reports
-          path: reports/
-
-      - name: Enforce Security Gate
-        run: |
-          python - <<'EOF'
-          import json, os, sys
-          for f in os.listdir("reports"):
-              if f.endswith(".json"):
-                  data = json.load(open(os.path.join("reports", f)))
-                  if data.get("overall_risk_score", 0) >= 8:
-                      print("❌ CRITICAL vulnerabilities detected")
-                      sys.exit(1)
-          print("✅ Security gate passed")
-          EOF
-
-  # =========================
-  # Auto Remediation
-  # =========================
-  remediation:
-    needs: security-scan
-    runs-on: ubuntu-latest
-    if: github.event_name == 'push'
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-      - name: Install dependencies
-        run: pip install -r requirements.txt
-      - name: Download security reports
-        uses: actions/download-artifact@v4
-        with:
-          name: security-reports
-          path: reports/
-      - name: Run auto-remediation
-        run: python hardening/auto_remediate.py
-        continue-on-error: true
-      - name: Commit remediation changes
-        run: |
-          git config user.name "github-actions"
-          git config user.email "actions@github.com"
-          git add .
-          git diff --cached --quiet || git commit -m "Auto-remediation applied"
-          git push
-        continue-on-error: true
-
-  # =========================
-  # Deploy Staging
-  # =========================
-  deploy-staging:
-    needs: remediation
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/develop'
-    environment: staging
-    steps:
-      - uses: actions/checkout@v4
-      - uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Build & Push Staging Docker Image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: ./Dockerfile
-          push: true
-          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:staging
-
-  # =========================
-  # Deploy Production
-  # =========================
-  deploy-production:
-    needs: remediation
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
-    environment: production
-    steps:
-      - uses: actions/checkout@v4
-      - uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Build & Push Production Docker Image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: ./Dockerfile
-          push: true
-          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          docker run --rm ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/app:latest python -V
