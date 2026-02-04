@@ -45,11 +45,11 @@ jobs:
       - name: Install Node dependencies
         run: |
           cd dashboard
-          npm ci
+          npm install
 
       - name: Lint Python
         run: |
-          pip install flake8
+          pip install flake8==7.3.0
           flake8 .
 
       - name: Lint JavaScript
