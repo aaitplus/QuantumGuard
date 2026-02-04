@@ -1,23 +1,42 @@
 # ------------------------------
-# QuantumGuard Dockerfile
+# QuantumGuard Production Dockerfile
 # ------------------------------
 
+# ------------------------------
 # Stage 1: Build Python dependencies
-FROM python:3.11-alpine AS backend
-
-# Install system dependencies
-RUN apk add --no-cache bash git build-base libffi-dev
+# ------------------------------
+FROM python:3.11-slim AS build
 
 # Set working directory
 WORKDIR /app
 
-# Copy Python requirement files
-COPY requirements.txt ./
+# Install build dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential git libffi-dev libssl-dev pkg-config && \
+    rm -rf /var/lib/apt/lists/*
 
-# Install Python dependencies
+# Copy requirements file
+COPY requirements.txt .
+
+# Create virtual environment and install Python dependencies
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+RUN pip install --upgrade pip
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy Python source code
+# ------------------------------
+# Stage 2: Runtime image
+# ------------------------------
+FROM python:3.11-slim AS runtime
+
+# Set working directory
+WORKDIR /app
+
+# Copy installed packages from build stage
+COPY --from=build /opt/venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Copy application code
 COPY app/ ./app/
 COPY simulator/ ./simulator/
 COPY scanner/ ./scanner/
@@ -25,20 +44,26 @@ COPY scripts/ ./scripts/
 COPY hardening/ ./hardening/
 COPY terraform/ ./terraform/
 COPY k8s/ ./k8s/
-COPY utils.py ./ 
-COPY self_learning.py ./ 
-COPY quantumguard.py ./ 
+COPY utils.py ./
+COPY self_learning.py ./
+COPY quantumguard.py ./
 
-# Copy the dashboard Flask app
+# Copy the dashboard folder (make sure this exists in repo root!)
 COPY dashboard/ ./dashboard/
 
-# Expose Flask default port
+# Expose Flask port
 EXPOSE 5000
 
-# Set environment variables
+# Create a non-root user for security
+RUN useradd -m quantumguard
+USER quantumguard
+
+# Install Gunicorn for production Flask server
+RUN pip install gunicorn
+
+# Set Flask app environment variables
 ENV FLASK_APP=dashboard/app.py
-ENV FLASK_RUN_HOST=0.0.0.0
 ENV FLASK_ENV=production
 
-# Start the Flask app
-CMD ["flask", "run"]
+# Start Flask app with Gunicorn
+CMD ["gunicorn", "--workers", "3", "--bind", "0.0.0.0:5000", "dashboard.app:app"]
