@@ -8,6 +8,10 @@ on:
   schedule:
     - cron: '0 2 * * *'
 
+permissions:
+  contents: read
+  packages: write
+
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: quantumguard   # must be lowercase
@@ -40,23 +44,17 @@ jobs:
           pip install flake8==7.3.0
           flake8 . || true
 
-      - name: Build Docker image
+      - name: Build Docker image (local only)
         uses: docker/build-push-action@v5
         with:
-          context: .                # repo root
+          context: .
           file: ./docker/Dockerfile
           push: false
-          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/app:latest
+          tags: ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}/app:latest
 
       - name: Smoke test container
         run: |
-          docker run --rm ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/app:latest python -V
-
-      - name: Upload build context
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-context
-          path: docker/
+          docker run --rm ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}/app:latest python -V
 
   # =========================
   # Security Scanning
@@ -64,24 +62,22 @@ jobs:
   security-scan:
     needs: build
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
       - name: Install security tools
         run: |
-          # Install Semgrep
           pip install semgrep
-          # Install Trivy
           curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sudo sh -s -- -b /usr/local/bin
-          # Install tfsec directly (fixed version)
           TFSEC_VERSION="1.28.14"
           curl -L "https://github.com/aquasecurity/tfsec/releases/download/v${TFSEC_VERSION}/tfsec-linux-amd64" -o tfsec
           chmod +x tfsec
           sudo mv tfsec /usr/local/bin/
-          tfsec --version
 
       - name: Run SAST
         run: python scanner/sast_scan.py
@@ -125,21 +121,27 @@ jobs:
     needs: security-scan
     runs-on: ubuntu-latest
     if: github.event_name == 'push'
+
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+
       - name: Install dependencies
         run: pip install -r requirements.txt
+
       - name: Download security reports
         uses: actions/download-artifact@v4
         with:
           name: security-reports
           path: reports/
+
       - name: Run auto-remediation
         run: python hardening/auto_remediate.py
         continue-on-error: true
+
       - name: Commit remediation changes
         run: |
           git config user.name "github-actions"
@@ -157,20 +159,23 @@ jobs:
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/develop'
     environment: staging
+
     steps:
       - uses: actions/checkout@v4
+
       - uses: docker/login-action@v3
         with:
-          registry: ${{ env.REGISTRY }}
+          registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Build & Push Staging Docker Image
+
+      - name: Build & Push Staging Image
         uses: docker/build-push-action@v5
         with:
-          context: .                    # repo root
+          context: .
           file: ./docker/Dockerfile
           push: true
-          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/app:staging
+          tags: ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}/app:staging
 
   # =========================
   # Deploy Production
@@ -180,17 +185,20 @@ jobs:
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
     environment: production
+
     steps:
       - uses: actions/checkout@v4
+
       - uses: docker/login-action@v3
         with:
-          registry: ${{ env.REGISTRY }}
+          registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Build & Push Production Docker Image
+
+      - name: Build & Push Production Image
         uses: docker/build-push-action@v5
         with:
-          context: .                    # repo root
+          context: .
           file: ./docker/Dockerfile
           push: true
-          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/app:latest
+          tags: ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}/app:latest
