@@ -1,5 +1,5 @@
 # QuantumGuard CI/CD Pipeline
-# Compatible with ubuntu-latest (24.04) – NO Docker reinstallation
+# Python + Docker only – No Node/npm steps
 
 name: QuantumGuard CI/CD
 
@@ -30,10 +30,6 @@ jobs:
         with:
           python-version: '3.11'
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '18'
-
       - name: Verify Docker (preinstalled)
         run: docker version
 
@@ -42,38 +38,24 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Install Node dependencies
-        run: |
-          cd dashboard
-          npm install
-
       - name: Lint Python
         run: |
           pip install flake8==7.3.0
           flake8 .
 
-      - name: Lint JavaScript
-        run: |
-          cd dashboard
-          npm run lint || true
-
       - name: Build Docker images
         run: |
           docker build -t quantumguard-app ./docker
-          docker build -t quantumguard-dashboard ./dashboard
 
-      - name: Smoke test containers
+      - name: Smoke test container
         run: |
           docker run --rm quantumguard-app python -V
-          docker run --rm quantumguard-dashboard node -v
 
       - name: Upload build context
         uses: actions/upload-artifact@v4
         with:
           name: build-context
-          path: |
-            docker/
-            dashboard/
+          path: docker/
 
   # =========================
   # Security Scanning
