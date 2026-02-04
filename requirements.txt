@@ -29,12 +29,7 @@ colorlog==6.7.0
 pytest==7.4.0
 pytest-cov==4.1.0
 
-# Optional: For advanced ML features (uncomment if needed)
-# tensorflow==2.13.0
-# torch==2.0.1
-# transformers==4.30.2
-
 # Code Quality
 black==23.7.0
-flake8==6.0.7
+flake8==7.3.0
 mypy==1.5.1
