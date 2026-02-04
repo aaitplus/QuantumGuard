@@ -1,49 +1,60 @@
-# Dockerfile — builds the OWASP Juice Shop app for QuantumGuard
+# QuantumGuard Multi-Stage Dockerfile
+# Base images: Node.js 20 for frontend/backend, Python 3.11 for production utils if needed
 
-# -----------------------------
-# Builder Stage
-# -----------------------------
+# -------------------------
+# Builder stage (Node.js)
+# -------------------------
 FROM node:20-alpine AS builder
 
-# Install build dependencies
-RUN apk add --no-cache git bash python3 make g++
+# Install build tools
+RUN apk add --no-cache bash git python3 make g++
 
 # Set working directory
 WORKDIR /app
 
-# Clone the vulnerable Juice Shop app using your repo scripts
+# Copy project files into build context
+COPY package*.json ./
+COPY frontend/ ./frontend/
+COPY server/ ./server/
 COPY app/ ./app/
-RUN chmod +x app/clone.sh \
- && app/clone.sh
 
-# Let the Juice Shop source live in /app/juice-shop
-WORKDIR /app/juice-shop
-
-# Install Node dependencies
+# Install all dependencies
 RUN npm install
 
-# Build the app (if your install script includes build steps)
-# If there is no build script, this will simply prepare node_modules
-RUN npm run build || true
+# Build frontend
+RUN cd frontend && npm run build && cd ..
 
-# -----------------------------
-# Production Stage
-# -----------------------------
+# -------------------------
+# Production stage
+# -------------------------
 FROM node:20-alpine AS production
 
-RUN apk update && apk add --no-cache dumb-init su-exec
+# Install runtime tools
+RUN apk add --no-cache dumb-init su-exec bash python3
 
+# Create non-root user
+RUN addgroup -g 1001 -S nodejs \
+ && adduser -S nextjs -u 1001
+
+# Set working directory
 WORKDIR /app
 
-# Copy app sources & built node_modules
-COPY --from=builder /app/juice-shop ./
-
-# Expose app port
-EXPOSE 3000
+# Copy built files and node_modules from builder
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/frontend/dist ./frontend/dist
+COPY --from=builder /app/server ./server
+COPY --from=builder /app/app ./app
+COPY --from=builder /app/package*.json ./
 
 # Switch to non-root user
-RUN addgroup -S appgroup && adduser -S appuser -G appgroup
-USER appuser
+USER nextjs
 
-# Default command
-CMD ["npm", "start"]
+# Expose port
+EXPOSE 3000
+
+# Healthcheck
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD node -e "require('http').get('http://localhost:3000/api/status', (res) => { process.exit(res.statusCode === 200 ? 0 : 1) })"
+
+# Start server
+CMD ["node", "server/index.js"]
