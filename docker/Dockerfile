@@ -37,9 +37,6 @@ COPY --from=builder --chown=nextjs:nodejs /app/node_modules ./node_modules
 COPY --from=builder --chown=nextjs:nodejs /app/package.json ./package.json
 COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 
-# Copy custom cyberpunk theme
-COPY --chown=nextjs:nodejs app/custom-theme.css ./public/custom-theme.css
-
 # Switch to non-root user
 USER nextjs
 
