@@ -1,70 +1,44 @@
 # ------------------------------
-# Stage 1: Build backend (Python)
+# QuantumGuard Dockerfile
 # ------------------------------
+
+# Stage 1: Build Python dependencies
 FROM python:3.11-alpine AS backend
 
-# Install required build tools
-RUN apk add --no-cache bash git make g++ 
+# Install system dependencies
+RUN apk add --no-cache bash git build-base libffi-dev
 
 # Set working directory
 WORKDIR /app
 
-# Copy Python dependencies
-COPY ../requirements.txt ./
+# Copy Python requirement files
+COPY requirements.txt ./
 
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy backend source code
-COPY ../app/ ./app/
-COPY ../scanner/ ./scanner/
-COPY ../simulator/ ./simulator/
-COPY ../scripts/ ./scripts/
-COPY ../hardening/ ./hardening/
-COPY ../terraform/ ./terraform/
-COPY ../k8s/ ./k8s/
-COPY ../quantumguard.py ./
-COPY ../self_learning.py ./
-COPY ../utils.py ./
+# Copy Python source code
+COPY app/ ./app/
+COPY simulator/ ./simulator/
+COPY scanner/ ./scanner/
+COPY scripts/ ./scripts/
+COPY hardening/ ./hardening/
+COPY terraform/ ./terraform/
+COPY k8s/ ./k8s/
+COPY utils.py ./ 
+COPY self_learning.py ./ 
+COPY quantumguard.py ./ 
 
-# Optional: expose port if needed (example: Flask API)
-# EXPOSE 5000
+# Copy the dashboard Flask app
+COPY dashboard/ ./dashboard/
 
-# ------------------------------
-# Stage 2: Build frontend dashboard (if applicable)
-# ------------------------------
-FROM node:20-alpine AS frontend-builder
+# Expose Flask default port
+EXPOSE 5000
 
-# Install tools
-RUN apk add --no-cache bash git python3 make g++
+# Set environment variables
+ENV FLASK_APP=dashboard/app.py
+ENV FLASK_RUN_HOST=0.0.0.0
+ENV FLASK_ENV=production
 
-WORKDIR /dashboard
-
-# Copy dashboard folder
-COPY ../dashboard/ ./
-
-# Install frontend dependencies
-RUN npm install
-
-# Build Angular dashboard
-RUN npx ng build --configuration production
-
-# ------------------------------
-# Stage 3: Production image
-# ------------------------------
-FROM python:3.11-alpine AS production
-
-# Set working directory
-WORKDIR /app
-
-# Copy backend from builder
-COPY --from=backend /app /app
-
-# Copy dashboard build output if exists
-COPY --from=frontend-builder /dashboard/dist /app/dashboard/dist
-
-# Optional: expose ports
-# EXPOSE 5000
-
-# Set default command
-CMD ["python", "quantumguard.py"]
+# Start the Flask app
+CMD ["flask", "run"]
