@@ -1,62 +1,44 @@
-# QuantumGuard Dockerfile - Multi-stage build
+# QuantumGuard Dockerfile - builds only the frontend (dashboard)
+# Use Node 20 for Angular 19+
 
 # =========================
 # Builder Stage
 # =========================
 FROM node:20-alpine AS builder
 
-# Install build dependencies
+# Install build tools
 RUN apk add --no-cache bash git python3 make g++
 
 # Set working directory
 WORKDIR /app
 
-# Copy package files first for caching
+# Copy package files first (for caching)
 COPY package*.json ./
 
-# Install root-level dependencies (if any)
+# Install dependencies
 RUN npm install
 
-# Copy all source code from repo root
+# Copy only the dashboard folder (actual folder in repo)
 COPY dashboard ./dashboard
-COPY server ./server
-COPY app ./app
 
-# Install dependencies inside all subfolders
+# Build the Angular frontend
 WORKDIR /app/dashboard
 RUN npm install
-RUN npm run build
+RUN npm run build --configuration production
 
 # =========================
 # Production Stage
 # =========================
-FROM node:20-alpine AS production
+FROM nginx:alpine
 
-# Install runtime dependencies
-RUN apk add --no-cache dumb-init su-exec
+# Remove default Nginx static files
+RUN rm -rf /usr/share/nginx/html/*
 
-# Create non-root user
-RUN addgroup -g 1001 -S nodejs && \
-    adduser -S quantum -u 1001 -G nodejs
+# Copy built Angular files from builder
+COPY --from=builder /app/dashboard/dist/dashboard /usr/share/nginx/html
 
-# Set working directory
-WORKDIR /app
+# Expose port 80
+EXPOSE 80
 
-# Copy built dashboard from builder
-COPY --from=builder /app/dashboard/dist ./dashboard/dist
-
-# Copy server and app folders (source code)
-COPY --from=builder /app/server ./server
-COPY --from=builder /app/app ./app
-
-# Copy package files for production
-COPY --from=builder /app/package*.json ./
-
-# Switch to non-root user
-USER quantum
-
-# Expose dashboard port
-EXPOSE 4200
-
-# Default command to start server
-CMD ["node", "server/index.js"]
+# Start Nginx
+CMD ["nginx", "-g", "daemon off;"]
