@@ -1,49 +1,43 @@
-# QuantumGuard Dockerfile
-# Build and run the cyberpunk dashboard + QuantumGuard app
-
 # ------------------------------
-# Stage 1: Build Python Dependencies
+# Builder stage
 # ------------------------------
 FROM python:3.11-alpine AS builder
 
-# Install build dependencies
-RUN apk add --no-cache bash git make g++
+RUN apk add --no-cache bash git make g++ nodejs npm
 
-# Set working directory
 WORKDIR /app
 
-# Copy Python requirements and install
+# Copy Python requirements first for caching
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy all app source code
-COPY app/ ./app
-COPY simulator/ ./simulator
-COPY scanner/ ./scanner
-COPY dashboard/ ./dashboard
-COPY scripts/ ./scripts
-COPY hardening/ ./hardening
-COPY terraform/ ./terraform
-COPY k8s/ ./k8s
+# Copy all necessary repo folders/files
+COPY app/ ./app/
+COPY dashboard/ ./dashboard/
+COPY simulator/ ./simulator/
+COPY scanner/ ./scanner/
+COPY scripts/ ./scripts/
+COPY hardening/ ./hardening/
+COPY terraform/ ./terraform/
+COPY k8s/ ./k8s/
 COPY utils.py .
 COPY self_learning.py .
 COPY quantumguard.py .
 
+# Optional: Build Angular dashboard if exists
+WORKDIR /app/dashboard
+RUN npm install
+RUN npm run build --prod
+
 # ------------------------------
-# Stage 2: Production image
+# Production stage
 # ------------------------------
 FROM python:3.11-alpine
 
-# Install runtime dependencies
-RUN apk add --no-cache bash git
+RUN apk add --no-cache bash git nodejs npm
 
 WORKDIR /app
-
-# Copy built app from builder
 COPY --from=builder /app /app
 
-# Expose port for the dashboard
 EXPOSE 5000
-
-# Default command
 CMD ["python", "quantumguard.py"]
