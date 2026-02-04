@@ -16,9 +16,9 @@ COPY requirements.txt ./
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy main Python files (inside docker folder)
-COPY docker/quantumguard.py ./
-COPY docker/self_learning.py ./
+# Copy main Python files
+COPY quantumguard.py ./
+COPY self_learning.py ./
 COPY utils.py ./
 
 # Copy application folders
