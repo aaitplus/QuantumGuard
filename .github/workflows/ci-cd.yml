@@ -11,7 +11,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository.toLower() }} # lowercase repo name
+  IMAGE_NAME: quantumguard # must be lowercase
 
 jobs:
 
@@ -65,8 +65,10 @@ jobs:
   security-scan:
     needs: build
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
@@ -119,21 +121,27 @@ jobs:
     needs: security-scan
     runs-on: ubuntu-latest
     if: github.event_name == 'push'
+
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+
       - name: Install dependencies
         run: pip install -r requirements.txt
+
       - name: Download security reports
         uses: actions/download-artifact@v4
         with:
           name: security-reports
           path: reports/
+
       - name: Run auto-remediation
         run: python hardening/auto_remediate.py
         continue-on-error: true
+
       - name: Commit remediation changes
         run: |
           git config user.name "github-actions"
@@ -151,13 +159,16 @@ jobs:
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/develop'
     environment: staging
+
     steps:
       - uses: actions/checkout@v4
+
       - uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Build & Push Staging Docker Image
         uses: docker/build-push-action@v5
         with:
@@ -174,13 +185,16 @@ jobs:
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
     environment: production
+
     steps:
       - uses: actions/checkout@v4
+
       - uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Build & Push Production Docker Image
         uses: docker/build-push-action@v5
         with:
