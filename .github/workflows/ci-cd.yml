@@ -1,3 +1,4 @@
+# .github/workflows/ci-cd.yml
 name: QuantumGuard CI/CD
 
 on:
@@ -13,15 +14,19 @@ env:
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
+
+  # =========================
+  # Build & Test Docker Image
+  # =========================
   build:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - name: Setup Python
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
@@ -30,24 +35,35 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Lint Python
+      - name: Lint Python code
         run: |
           pip install flake8==7.3.0
           flake8 . || true
 
-      - name: Build Docker image
-        run: docker build -t quantumguard-app .
+      - name: Build & Push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./docker/Dockerfile
+          push: true
+          tags: ${{ env.REGISTRY }}/${{ github.repository }}/app:latest
 
       - name: Smoke test container
-        run: docker run --rm quantumguard-app python -V
+        run: |
+          docker run --rm ${{ env.REGISTRY }}/${{ github.repository }}/app:latest python -V
 
+  # =========================
+  # Security Scanning
+  # =========================
   security-scan:
     needs: build
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
@@ -79,9 +95,64 @@ jobs:
           name: security-reports
           path: reports/
 
-  deploy:
+      - name: Enforce Security Gate
+        run: |
+          python - <<'EOF'
+          import json, os, sys
+          for f in os.listdir("reports"):
+              if f.endswith(".json"):
+                  data = json.load(open(os.path.join("reports", f)))
+                  if data.get("overall_risk_score", 0) >= 8:
+                      print("❌ CRITICAL vulnerabilities detected")
+                      sys.exit(1)
+          print("✅ Security gate passed")
+          EOF
+
+  # =========================
+  # Auto Remediation
+  # =========================
+  remediation:
     needs: security-scan
     runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Download security reports
+        uses: actions/download-artifact@v4
+        with:
+          name: security-reports
+          path: reports/
+
+      - name: Run auto-remediation
+        run: python hardening/auto_remediate.py
+        continue-on-error: true
+
+      - name: Commit remediation changes
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add .
+          git diff --cached --quiet || git commit -m "Auto-remediation applied"
+          git push
+        continue-on-error: true
+
+  # =========================
+  # Deploy Staging
+  # =========================
+  deploy-staging:
+    needs: remediation
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/develop'
+    environment: staging
 
     steps:
       - uses: actions/checkout@v4
@@ -92,7 +163,36 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build & Push Docker
-        run: |
-          docker build -t $REGISTRY/$IMAGE_NAME/app:latest .
-          docker push $REGISTRY/$IMAGE_NAME/app:latest
+      - name: Build & Push Staging Docker Image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./docker/Dockerfile
+          push: true
+          tags: ${{ env.REGISTRY }}/${{ github.repository }}/app:staging
+
+  # =========================
+  # Deploy Production
+  # =========================
+  deploy-production:
+    needs: remediation
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    environment: production
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build & Push Production Docker Image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./docker/Dockerfile
+          push: true
+          tags: ${{ env.REGISTRY }}/${{ github.repository }}/app:latest
