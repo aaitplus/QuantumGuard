@@ -22,9 +22,11 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - name: Setup Python
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
@@ -44,8 +46,8 @@ jobs:
       - name: Build Docker image
         uses: docker/build-push-action@v5
         with:
-          context: ./docker
-          file: ./docker/Dockerfile
+          context: .
+          file: ./Dockerfile
           push: false
           tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/app:latest
 
@@ -57,7 +59,15 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: build-context
-          path: docker/
+          path: |
+            app/
+            scanner/
+            simulator/
+            scripts/
+            hardening/
+            terraform/
+            k8s/
+            docker/dashboard/
 
   # =========================
   # Security Scanning
@@ -65,6 +75,7 @@ jobs:
   security-scan:
     needs: build
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -161,8 +172,8 @@ jobs:
       - name: Build & Push Staging Docker Image
         uses: docker/build-push-action@v5
         with:
-          context: ./docker
-          file: ./docker/Dockerfile
+          context: .
+          file: ./Dockerfile
           push: true
           tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/app:staging
 
@@ -184,7 +195,7 @@ jobs:
       - name: Build & Push Production Docker Image
         uses: docker/build-push-action@v5
         with:
-          context: ./docker
-          file: ./docker/Dockerfile
+          context: .
+          file: ./Dockerfile
           push: true
           tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/app:latest
