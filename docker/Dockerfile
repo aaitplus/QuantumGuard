@@ -1,49 +1,62 @@
-# ==========================================
-# QuantumGuard Dockerfile
-# Repo-root build context REQUIRED
-# ==========================================
+# QuantumGuard Dockerfile - Multi-stage build
 
-########################
+# =========================
 # Builder Stage
-########################
+# =========================
 FROM node:20-alpine AS builder
 
+# Install build dependencies
 RUN apk add --no-cache bash git python3 make g++
 
+# Set working directory
 WORKDIR /app
 
-# Copy root package files
+# Copy package files first for caching
 COPY package*.json ./
 
-# Copy frontend & server
-COPY dashboard ./dashboard
-COPY server ./server
-
-# Install dependencies
+# Install root-level dependencies (if any)
 RUN npm install
 
-# Build frontend if script exists
-RUN npm run build --if-present
+# Copy all source code from repo root
+COPY dashboard ./dashboard
+COPY server ./server
+COPY app ./app
 
-########################
+# Install dependencies inside all subfolders
+WORKDIR /app/dashboard
+RUN npm install
+RUN npm run build
+
+# =========================
 # Production Stage
-########################
-FROM node:20-alpine
+# =========================
+FROM node:20-alpine AS production
 
-RUN apk add --no-cache dumb-init \
- && addgroup -S nodejs \
- && adduser -S nodeuser -G nodejs
+# Install runtime dependencies
+RUN apk add --no-cache dumb-init su-exec
 
+# Create non-root user
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S quantum -u 1001 -G nodejs
+
+# Set working directory
 WORKDIR /app
 
-# Copy built output
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/dashboard ./dashboard
+# Copy built dashboard from builder
+COPY --from=builder /app/dashboard/dist ./dashboard/dist
+
+# Copy server and app folders (source code)
 COPY --from=builder /app/server ./server
+COPY --from=builder /app/app ./app
+
+# Copy package files for production
 COPY --from=builder /app/package*.json ./
 
-USER nodeuser
+# Switch to non-root user
+USER quantum
 
-EXPOSE 3000
+# Expose dashboard port
+EXPOSE 4200
 
-CMD ["npm", "start"]
+# Default command to start server
+CMD ["node", "server/index.js"]
