@@ -1,59 +1,39 @@
-# ------------------------------
-# QuantumGuard Dockerfile
-# ------------------------------
-
-# Use Python slim image
-FROM python:3.11-slim AS build
-
-# Set work directory
-WORKDIR /app
-
-# Install build dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential git libffi-dev libssl-dev pkg-config \
-    && rm -rf /var/lib/apt/lists/*
-
-# Copy Python requirements
-COPY ../requirements.txt ./
-
-# Install Python packages
-RUN pip install --upgrade pip
-RUN pip install --no-cache-dir -r requirements.txt
-
-# ------------------------------
-# Runtime image
-# ------------------------------
+# Use Python
 FROM python:3.11-slim
 
 WORKDIR /app
 
-# Copy Python virtualenv from build stage
-COPY --from=build /usr/local/lib/python3.11 /usr/local/lib/python3.11
-COPY --from=build /usr/local/bin /usr/local/bin
+# Install system deps
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential git libffi-dev libssl-dev pkg-config \
+    && rm -rf /var/lib/apt/lists/*
 
-# Copy source code
+# Copy Python dependencies
+COPY ../requirements.txt ./
+RUN pip install --upgrade pip
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy source files from repo root via relative paths
 COPY ../quantumguard.py ./
 COPY ../self_learning.py ./
 COPY ../utils.py ./
 
+# Copy project folders
 COPY ../app ./app
-COPY ../hardening ./hardening
 COPY ../scanner ./scanner
 COPY ../simulator ./simulator
 COPY ../scripts ./scripts
+COPY ../hardening ./hardening
 COPY ../terraform ./terraform
 COPY ../k8s ./k8s
 
-# Copy dashboard folder
+# Copy dashboard from docker/dashboard
 COPY ./dashboard ./dashboard
 
-# Expose Flask port
+# Expose Flask default port
 EXPOSE 5000
-
-# Flask environment variables
 ENV FLASK_APP=dashboard/app.py
 ENV FLASK_RUN_HOST=0.0.0.0
 ENV FLASK_ENV=production
 
-# Start Flask app
 CMD ["flask", "run"]
