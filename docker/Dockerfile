@@ -1,54 +1,49 @@
-# QuantumGuard Application Dockerfile
-# Multi-stage build for Angular frontend + Python backend
+# Dockerfile — builds the OWASP Juice Shop app for QuantumGuard
 
-# -------------------------
-# Builder stage
-# -------------------------
+# -----------------------------
+# Builder Stage
+# -----------------------------
 FROM node:20-alpine AS builder
 
 # Install build dependencies
-RUN apk add --no-cache python3 make g++ bash git
+RUN apk add --no-cache git bash python3 make g++
 
 # Set working directory
 WORKDIR /app
 
-# Copy frontend source
-COPY frontend/ ./frontend/
-COPY package*.json ./
+# Clone the vulnerable Juice Shop app using your repo scripts
+COPY app/ ./app/
+RUN chmod +x app/clone.sh \
+ && app/clone.sh
 
-# Install frontend dependencies
-RUN cd frontend && npm install
+# Let the Juice Shop source live in /app/juice-shop
+WORKDIR /app/juice-shop
 
-# Build frontend
-RUN cd frontend && npm run build:frontend
+# Install Node dependencies
+RUN npm install
 
-# -------------------------
-# Production stage
-# -------------------------
-FROM python:3.11-alpine AS production
+# Build the app (if your install script includes build steps)
+# If there is no build script, this will simply prepare node_modules
+RUN npm run build || true
 
-# Install system dependencies
-RUN apk update && apk add --no-cache bash dumb-init su-exec
+# -----------------------------
+# Production Stage
+# -----------------------------
+FROM node:20-alpine AS production
 
-# Set working directory
+RUN apk update && apk add --no-cache dumb-init su-exec
+
 WORKDIR /app
 
-# Copy backend code
-COPY . .
+# Copy app sources & built node_modules
+COPY --from=builder /app/juice-shop ./
 
-# Copy built frontend from builder
-COPY --from=builder /app/frontend/dist ./frontend/dist
-
-# Install Python dependencies
-RUN pip install --no-cache-dir --upgrade pip
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Expose application port
-EXPOSE 8000
+# Expose app port
+EXPOSE 3000
 
 # Switch to non-root user
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 USER appuser
 
-# Start the application
-CMD ["python", "quantumguard.py"]
+# Default command
+CMD ["npm", "start"]
