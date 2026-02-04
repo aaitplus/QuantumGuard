@@ -1,69 +1,55 @@
-# ------------------------------
-# QuantumGuard Production Dockerfile
-# ------------------------------
-
-# ------------------------------
-# Stage 1: Build Python dependencies
-# ------------------------------
+# =========================
+# Stage 1: Build Python Environment
+# =========================
 FROM python:3.11-slim AS build
-
-# Set working directory
-WORKDIR /app
 
 # Install build dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential git libffi-dev libssl-dev pkg-config && \
-    rm -rf /var/lib/apt/lists/*
+    build-essential \
+    git \
+    libffi-dev \
+    libssl-dev \
+    pkg-config \
+    && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements file
-COPY requirements.txt .
-
-# Create virtual environment and install Python dependencies
-RUN python -m venv /opt/venv
-ENV PATH="/opt/venv/bin:$PATH"
-RUN pip install --upgrade pip
-RUN pip install --no-cache-dir -r requirements.txt
-
-# ------------------------------
-# Stage 2: Runtime image
-# ------------------------------
-FROM python:3.11-slim AS runtime
-
-# Set working directory
+# Set workdir for build stage
 WORKDIR /app
 
-# Copy installed packages from build stage
+# Copy requirements first for caching
+COPY requirements.txt .
+RUN python -m venv /opt/venv
+RUN /opt/venv/bin/pip install --upgrade pip
+RUN /opt/venv/bin/pip install --no-cache-dir -r requirements.txt
+
+# =========================
+# Stage 2: Runtime Image
+# =========================
+FROM python:3.11-slim AS runtime
+
+# Set workdir for runtime
+WORKDIR /app
+
+# Copy Python venv from build
 COPY --from=build /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
 # Copy application code
+COPY quantumguard.py .
+COPY self_learning.py .
+COPY utils.py .
+
+# Copy directories
 COPY app/ ./app/
-COPY simulator/ ./simulator/
-COPY scanner/ ./scanner/
-COPY scripts/ ./scripts/
+COPY docker/dashboard/ ./dashboard/
 COPY hardening/ ./hardening/
-COPY terraform/ ./terraform/
 COPY k8s/ ./k8s/
-COPY utils.py ./
-COPY self_learning.py ./
-COPY quantumguard.py ./
+COPY scanner/ ./scanner/
+COPY simulator/ ./simulator/
+COPY scripts/ ./scripts/
+COPY terraform/ ./terraform/
 
-# Copy the dashboard folder (make sure this exists in repo root!)
-COPY dashboard/ ./dashboard/
-
-# Expose Flask port
+# Expose Flask port for dashboard if needed
 EXPOSE 5000
 
-# Create a non-root user for security
-RUN useradd -m quantumguard
-USER quantumguard
-
-# Install Gunicorn for production Flask server
-RUN pip install gunicorn
-
-# Set Flask app environment variables
-ENV FLASK_APP=dashboard/app.py
-ENV FLASK_ENV=production
-
-# Start Flask app with Gunicorn
-CMD ["gunicorn", "--workers", "3", "--bind", "0.0.0.0:5000", "dashboard.app:app"]
+# Default command
+CMD ["python", "quantumguard.py"]
