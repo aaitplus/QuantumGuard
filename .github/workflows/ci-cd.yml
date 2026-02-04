@@ -72,9 +72,16 @@ jobs:
 
       - name: Install security tools
         run: |
+          # Install Semgrep
           pip install semgrep
+          # Install Trivy
           curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sudo sh -s -- -b /usr/local/bin
-          curl -sfL https://raw.githubusercontent.com/aquasecurity/tfsec/master/scripts/install_linux.sh | sudo sh
+          # Install tfsec directly (fixed version)
+          TFSEC_VERSION="1.28.14"
+          curl -L "https://github.com/aquasecurity/tfsec/releases/download/v${TFSEC_VERSION}/tfsec-linux-amd64" -o tfsec
+          chmod +x tfsec
+          sudo mv tfsec /usr/local/bin/
+          tfsec --version
 
       - name: Run SAST
         run: python scanner/sast_scan.py
