@@ -1,57 +1,49 @@
-# QuantumGuard Application Dockerfile
-# Multi-stage build for QuantumGuard app
+# ==========================================
+# QuantumGuard Dockerfile
+# Repo-root build context REQUIRED
+# ==========================================
 
-# ----------------------
+########################
 # Builder Stage
-# ----------------------
+########################
 FROM node:20-alpine AS builder
 
-# Install build dependencies
 RUN apk add --no-cache bash git python3 make g++
 
-# Set working directory
 WORKDIR /app
 
-# Copy package.json files first for caching dependencies
-COPY ../package*.json ./
+# Copy root package files
+COPY package*.json ./
 
-# Copy all source code from repo root
-COPY ../frontend ./frontend
-COPY ../server ./server
-COPY ../app ./app
+# Copy frontend & server
+COPY dashboard ./dashboard
+COPY server ./server
 
 # Install dependencies
 RUN npm install
 
-# Build the application (frontend + server)
-RUN npm run build
+# Build frontend if script exists
+RUN npm run build --if-present
 
-# ----------------------
+########################
 # Production Stage
-# ----------------------
-FROM node:20-alpine AS production
+########################
+FROM node:20-alpine
 
-# Install security updates and create non-root user
-RUN apk update && apk upgrade && \
-    apk add --no-cache dumb-init su-exec && \
-    addgroup -g 1001 -S nodejs && \
-    adduser -S nextjs -u 1001
+RUN apk add --no-cache dumb-init \
+ && addgroup -S nodejs \
+ && adduser -S nodeuser -G nodejs
 
-# Set working directory
 WORKDIR /app
 
-# Copy built app and dependencies from builder stage
+# Copy built output
 COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/frontend ./frontend
+COPY --from=builder /app/dashboard ./dashboard
 COPY --from=builder /app/server ./server
-COPY --from=builder /app/app ./app
 COPY --from=builder /app/package*.json ./
 
-# Switch to non-root user
-USER nextjs
+USER nodeuser
 
-# Expose app port
 EXPOSE 3000
 
-# Start the application
 CMD ["npm", "start"]
