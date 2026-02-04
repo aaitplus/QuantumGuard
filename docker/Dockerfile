@@ -1,30 +1,20 @@
-# QuantumGuard Dockerfile (fully corrected)
-# Build Angular dashboard and Python backend
-
 # ------------------------------
-# Stage 1: Build Angular dashboard
-FROM node:20-alpine AS frontend-builder
-
-RUN apk add --no-cache bash git python3 make g++
-
-WORKDIR /app
-
-# Copy only dashboard folder
-COPY dashboard/ ./dashboard/
-
-# Install dependencies and build
-RUN cd dashboard && npm install && npm run build --configuration production
-
+# Stage 1: Backend (Python)
 # ------------------------------
-# Stage 2: Python backend
 FROM python:3.11-alpine AS backend
 
-RUN apk add --no-cache bash git python3 make g++ build-base
+# Install required packages
+RUN apk add --no-cache bash git python3 make g++ nodejs npm
 
 WORKDIR /app
 
-# Copy all Python backend files from repo root
+# Copy Python dependencies
 COPY requirements.txt .
+
+# Install Python dependencies
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy all backend files
 COPY app/ ./app/
 COPY simulator/ ./simulator/
 COPY scanner/ ./scanner/
@@ -32,18 +22,46 @@ COPY scripts/ ./scripts/
 COPY hardening/ ./hardening/
 COPY terraform/ ./terraform/
 COPY k8s/ ./k8s/
-COPY utils.py .
-COPY self_learning.py .
-COPY quantumguard.py .
+COPY quantumguard.py self_learning.py utils.py ./
 
-# Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+# ------------------------------
+# Stage 2: Frontend Builder (Angular Dashboard)
+# ------------------------------
+FROM node:20-alpine AS frontend-builder
 
-# Copy Angular dashboard build from frontend stage
-COPY --from=frontend-builder /app/dashboard/dist/dashboard ./dashboard/dist/dashboard
+WORKDIR /app
 
-# Expose backend port
-EXPOSE 8000
+# Copy dashboard package files
+COPY dashboard/package*.json ./dashboard/
+WORKDIR /app/dashboard
+
+# Install frontend dependencies
+RUN npm install
+
+# Copy frontend source
+COPY dashboard/ ./dashboard/
+
+# Build frontend
+RUN npm run build -- --configuration production
+
+# ------------------------------
+# Stage 3: Production Image
+# ------------------------------
+FROM python:3.11-alpine AS production
+
+# Install minimal dependencies
+RUN apk add --no-cache bash python3 nodejs npm
+
+WORKDIR /app
+
+# Copy backend from builder
+COPY --from=backend /app /app
+
+# Copy built dashboard from frontend builder
+COPY --from=frontend-builder /app/dashboard/dist /app/dashboard/dist
+
+# Set environment variables if needed
+ENV PYTHONUNBUFFERED=1
 
 # Default command
-CMD ["python", "quantumguard.py"]
+CMD ["python3", "quantumguard.py"]
